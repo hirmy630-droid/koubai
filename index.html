@@ -138,6 +138,7 @@
             background-color: #000;
             width: 100%;
             aspect-ratio: 16 / 9;
+            position: relative;
         }
         canvas { width: 100%; height: 100%; display: block; }
 
@@ -236,7 +237,13 @@
                         <span id="resStep" class="result-value text-white">-</span>
                     </div>
                 </div>
-                <div class="canvas-container border border-[#333] rounded-lg">
+                
+                <div class="canvas-container border border-[#333] rounded-lg cursor-pointer" onclick="openZoomModal()">
+                    <!-- 拡大バッジ (hiddenを追加して非表示化) -->
+                    <div class="hidden absolute top-2 right-2 bg-black/70 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 backdrop-blur-sm border border-white/20 z-10 pointer-events-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
+                        拡大
+                    </div>
                     <canvas id="slopeCanvas"></canvas>
                 </div>
             </div>
@@ -259,6 +266,23 @@
                     </thead>
                     <tbody id="resultBody"></tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 拡大表示用モーダル (新規追加) -->
+    <div id="zoomModal" class="hidden fixed inset-0 z-[10000] flex items-center justify-center bg-black/95 backdrop-blur-md transition-opacity" onclick="closeZoomModal()">
+        <!-- 閉じるボタン -->
+        <button type="button" class="absolute top-6 right-6 text-white bg-white/20 hover:bg-white/30 rounded-full p-2 backdrop-blur-md transition-colors z-[10010]" onclick="closeZoomModal()">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+        <!-- 拡大画像コンテナ -->
+        <div class="w-full max-w-4xl p-2 md:p-6 flex flex-col items-center justify-center h-full pointer-events-none">
+            <!-- Canvasの内容がここに画像として表示される -->
+            <img id="zoomImg" class="w-full max-h-[80vh] object-contain rounded-xl shadow-2xl border border-white/20" alt="拡大図面">
+            <!-- ヒントテキスト -->
+            <div class="mt-6 text-white/50 text-sm font-medium tracking-widest bg-white/10 px-4 py-1.5 rounded-full">
+                画面をタップして閉じる
             </div>
         </div>
     </div>
@@ -422,7 +446,8 @@
             ctx.scale(dpr, dpr);
             ctx.clearRect(0, 0, rect.width, rect.height);
             
-            const padding = { l: 40, r: 40, t: 25, b: 35 };
+            // 数字を線の上に表示するため、上部のパディング(t)を増やす
+            const padding = { l: 30, r: 30, t: 35, b: 35 };
             const drawW = rect.width - (padding.l + padding.r);
             const drawH = rect.height - (padding.t + padding.b);
             const scaleX = drawW / (newB || 1);
@@ -432,35 +457,105 @@
             const tx = (x) => padding.l + x * scaleX;
             const ty = (y) => rect.height - padding.b - y * scaleY;
 
+            // 背景の横グリッド
             ctx.beginPath(); ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
             for(let j=0; j<=maxHeight; j+=maxHeight/4) {
+                if(j === 0) continue;
                 ctx.moveTo(tx(0), ty(j)); ctx.lineTo(tx(newB), ty(j));
             }
             ctx.stroke();
 
-            for (let i = 0; i <= count; i++) {
+            // 底辺 (W) - 入力欄の色: #0a84ff (青)
+            ctx.beginPath(); ctx.strokeStyle = '#0a84ff'; ctx.lineWidth = 2;
+            ctx.moveTo(tx(0), ty(0)); ctx.lineTo(tx(newB), ty(0)); ctx.stroke();
+
+            // ピッチの縦線 (Pitch) - 入力欄の色: #bf5af2 (紫)
+            for (let i = 1; i < count; i++) {
                 const cx = i * interval;
                 const cy = a + ((newC - a) / newB) * cx;
                 ctx.beginPath();
-                ctx.strokeStyle = (i === 0 || i === count) ? '#555' : '#222';
+                ctx.strokeStyle = '#bf5af2';
+                ctx.lineWidth = 1;
+                ctx.globalAlpha = 0.5; // 少し薄めにする
                 ctx.moveTo(tx(cx), ty(0)); ctx.lineTo(tx(cx), ty(cy)); ctx.stroke();
+                ctx.globalAlpha = 1.0;
             }
 
-            ctx.setLineDash([4, 2]); ctx.strokeStyle = '#ff453a'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(tx(origB), ty(0)); ctx.lineTo(tx(origB), ty(origC)); ctx.stroke();
-            ctx.setLineDash([]);
+            // 元のWの位置のL2 (点線) - 赤色に変更し、数字を下に配置
+            if (origB > 0 && origB !== newB) {
+                ctx.setLineDash([4, 2]); ctx.strokeStyle = '#ff453a'; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(tx(origB), ty(0)); ctx.lineTo(tx(origB), ty(origC)); ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // 元のL2の数値を縦線の下に表示 (サイズ11px)
+                ctx.font = "bold 11px sans-serif"; 
+                ctx.fillStyle = "#ff453a";
+                ctx.textAlign = "center";
+                ctx.fillText(Math.round(origC), tx(origB), ty(0) + 16);
+            }
 
-            ctx.beginPath(); ctx.strokeStyle = '#0a84ff'; ctx.lineWidth = 3;
+            // 左端(L1) - 入力欄の色: #30d158 (緑)
+            ctx.beginPath(); ctx.strokeStyle = '#30d158'; ctx.lineWidth = 2;
+            ctx.moveTo(tx(0), ty(0)); ctx.lineTo(tx(0), ty(a)); ctx.stroke();
+
+            // 右端(新L2) - 入力欄の色: #30d158 (緑)
+            ctx.beginPath(); ctx.strokeStyle = '#30d158'; ctx.lineWidth = 2;
+            ctx.moveTo(tx(newB), ty(0)); ctx.lineTo(tx(newB), ty(newC)); ctx.stroke();
+
+            // 斜辺 (白で目立たせる)
+            ctx.beginPath(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
             ctx.moveTo(tx(0), ty(a)); ctx.lineTo(tx(newB), ty(newC)); ctx.stroke();
             
-            ctx.font = "bold 10px sans-serif"; ctx.fillStyle = "#fff"; ctx.textAlign = "right";
-            ctx.fillText(Math.round(a), tx(0)-5, ty(a)+4);
-            ctx.textAlign = "left"; ctx.fillText(Math.round(newC), tx(newB)+5, ty(newC)+4);
+            // --- 数字の描画 ---
+            // フォントサイズを1ポイント大きく (元10px -> 11px)
+            ctx.font = "bold 11px sans-serif"; 
+            
+            // 左端 L1 (縦線の上)
+            ctx.fillStyle = "#30d158"; 
+            ctx.textAlign = "center";
+            ctx.fillText(Math.round(a), tx(0), ty(a) - 8);
+            
+            // 右端 延長L2 (縦線の上)
+            ctx.fillText(Math.round(newC), tx(newB), ty(newC) - 8);
+
+            // W (底辺の下)
+            ctx.fillStyle = "#0a84ff";
+            ctx.fillText(`W: ${Math.round(origB)}`, tx(origB / 2), ty(0) + 16);
+
+            // 延長後のW (もし延長されていたら表示)
+            if (origB !== newB && newB > 0) {
+                ctx.fillStyle = "#8e8e93";
+                ctx.font = "bold 10px sans-serif"; 
+                ctx.fillText(`全体幅: ${Math.round(newB)}`, tx(newB / 2), ty(0) + 28);
+            }
         }
 
         function saveState() {
             localStorage.setItem('slope_calc_v_keypad', JSON.stringify(values));
         }
+
+        // ---------- ズーム機能 (新規追加) ----------
+        function openZoomModal() {
+            const canvas = document.getElementById('slopeCanvas');
+            if (!canvas || canvas.width === 0) return;
+
+            const zoomImg = document.getElementById('zoomImg');
+            // Canvasの内容を画像データ(Base64)に変換してimgタグにセット
+            zoomImg.src = canvas.toDataURL('image/png');
+
+            const modal = document.getElementById('zoomModal');
+            modal.classList.remove('hidden');
+        }
+
+        function closeZoomModal() {
+            const modal = document.getElementById('zoomModal');
+            modal.classList.add('hidden');
+            
+            // メモリ解放のために画像をクリア
+            const zoomImg = document.getElementById('zoomImg');
+            zoomImg.src = '';
+        }
+        // ----------------------------------------
 
         // スワイプジェスチャーの実装
         function handleTouchStart(e) {
@@ -469,6 +564,9 @@
         }
 
         function handleTouchEnd(e) {
+            // モーダル表示中はスワイプによるタブ切り替えを無効化
+            if (!document.getElementById('zoomModal').classList.contains('hidden')) return;
+
             const touchEndX = e.changedTouches[0].clientX;
             const touchEndY = e.changedTouches[0].clientY;
             
