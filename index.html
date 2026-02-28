@@ -160,7 +160,7 @@
         }
     </style>
 </head>
-<body class="p-3">
+<body class="p-3 relative">
     <div id="app-container" class="max-w-md mx-auto min-h-screen pb-4">
         <header class="flex items-baseline justify-between py-1 px-1 mb-1">
             <h1 class="text-[20px] font-bold text-white tracking-tight">勾配 寸法計算</h1>
@@ -239,7 +239,7 @@
                 </div>
                 
                 <div class="canvas-container border border-[#333] rounded-lg cursor-pointer" onclick="openZoomModal()">
-                    <!-- 拡大バッジ (hiddenを追加して非表示化) -->
+                    <!-- 拡大バッジ (非表示) -->
                     <div class="hidden absolute top-2 right-2 bg-black/70 text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 backdrop-blur-sm border border-white/20 z-10 pointer-events-none">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
                         拡大
@@ -270,20 +270,28 @@
         </div>
     </div>
 
-    <!-- 拡大表示用モーダル (新規追加) -->
-    <div id="zoomModal" class="hidden fixed inset-0 z-[10000] flex items-center justify-center bg-black/95 backdrop-blur-md transition-opacity" onclick="closeZoomModal()">
-        <!-- 閉じるボタン -->
-        <button type="button" class="absolute top-6 right-6 text-white bg-white/20 hover:bg-white/30 rounded-full p-2 backdrop-blur-md transition-colors z-[10010]" onclick="closeZoomModal()">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
-        <!-- 拡大画像コンテナ -->
-        <div class="w-full max-w-4xl p-2 md:p-6 flex flex-col items-center justify-center h-full pointer-events-none">
-            <!-- Canvasの内容がここに画像として表示される -->
-            <img id="zoomImg" class="w-full max-h-[80vh] object-contain rounded-xl shadow-2xl border border-white/20" alt="拡大図面">
+    <!-- 拡大・ピンチ・回転対応ズームモーダル -->
+    <div id="zoomModal" class="hidden fixed inset-0 z-[10000] flex flex-col bg-black/95 backdrop-blur-md transition-opacity">
+        <!-- ヘッダー部分 -->
+        <div class="absolute top-0 left-0 right-0 p-4 md:p-6 flex justify-between items-center z-[10010] bg-gradient-to-b from-black/80 to-transparent">
             <!-- ヒントテキスト -->
-            <div class="mt-6 text-white/50 text-sm font-medium tracking-widest bg-white/10 px-4 py-1.5 rounded-full">
-                画面をタップして閉じる
+            <div class="text-white/60 text-[11px] font-bold tracking-widest bg-white/10 px-3 py-1.5 rounded-full pointer-events-none backdrop-blur-sm border border-white/10">
+                ピンチ＆スワイプで操作
             </div>
+            <div class="flex gap-3">
+                <!-- 回転ボタン -->
+                <button type="button" class="text-white bg-white/20 hover:bg-white/30 rounded-full p-2.5 backdrop-blur-md transition-colors" onclick="toggleZoomRotation()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                </button>
+                <!-- 閉じるボタン -->
+                <button type="button" class="text-white bg-white/20 hover:bg-white/30 rounded-full p-2.5 backdrop-blur-md transition-colors" onclick="closeZoomModal()">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+        </div>
+        <!-- 拡大画像コンテナ (touch-noneでスクロールを防止) -->
+        <div id="zoomArea" class="flex-1 w-full h-full flex items-center justify-center overflow-hidden touch-none relative">
+            <img id="zoomImg" class="max-w-full max-h-[80vh] object-contain transition-transform duration-75 ease-out rounded-xl border border-white/10 shadow-2xl" alt="拡大図面" style="transform-origin: center;">
         </div>
     </div>
 
@@ -291,16 +299,15 @@
         let currentTab = 'calc';
         let activeKey = 'L1';
         let values = { L1: '0', L2: '0', W: '0', Pitch: '0' };
-        let isFirstInput = true; // 上書きフラグ
+        let isFirstInput = true;
         const sequence = ['L1', 'L2', 'W', 'Pitch'];
-
-        // スワイプ判定用変数
         let touchStartX = 0;
         let touchStartY = 0;
 
+        // ---------- 入力・計算系 ----------
         function setActiveCell(key) {
             activeKey = key;
-            isFirstInput = true; // セル選択時に上書きフラグを立てる
+            isFirstInput = true; 
             sequence.forEach(k => {
                 const cell = document.getElementById(`cell-${k}`);
                 if(cell) cell.classList.remove('active');
@@ -311,7 +318,6 @@
 
         function pressKey(key) {
             let cur = values[activeKey];
-            
             if (key === 'AC') {
                 values = { L1: '0', L2: '0', W: '0', Pitch: '0' };
                 isFirstInput = true;
@@ -324,29 +330,18 @@
                 setActiveCell(sequence[nextIdx]);
                 return;
             } else {
-                // 数字入力処理
                 if (isFirstInput) {
-                    // 初回入力時は既存の値を消して上書き
-                    if (key === '00' || key === '000') {
-                        values[activeKey] = '0';
-                    } else {
-                        values[activeKey] = key;
-                    }
+                    if (key === '00' || key === '000') values[activeKey] = '0';
+                    else values[activeKey] = key;
                     isFirstInput = false;
                 } else {
-                    // 2打目以降は追記
                     if (cur === '0') {
-                        if (key === '00' || key === '000') {
-                            // 0のまま
-                        } else {
-                            values[activeKey] = key;
-                        }
+                        if (key !== '00' && key !== '000') values[activeKey] = key;
                     } else {
                         values[activeKey] += key;
                     }
                 }
             }
-            
             updateDisplay();
             calculate();
             saveState();
@@ -357,25 +352,19 @@
                 const val = values[k];
                 const num = parseFloat(val);
                 const display = document.getElementById(`val-${k}`);
-                if(display) {
-                    display.innerText = isNaN(num) ? val : num.toLocaleString('en-US', {maximumFractionDigits: 4});
-                }
+                if(display) display.innerText = isNaN(num) ? val : num.toLocaleString('en-US', {maximumFractionDigits: 4});
             });
         }
 
         function switchTab(tabName) {
             if (currentTab === tabName) return;
             currentTab = tabName;
-            
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
-            
             const targetView = document.getElementById(`view-${tabName}`);
             const targetBtn = document.getElementById(`tab-${tabName}`);
-            
             if(targetView) targetView.classList.add('active');
             if(targetBtn) targetBtn.classList.add('active');
-            
             if (tabName === 'calc') calculate();
             window.scrollTo(0, 0);
         }
@@ -422,7 +411,6 @@
                     const height = a + (slope * dist);
                     const tr = document.createElement('tr');
                     
-                    // 0行目の文字色をグレーに変更（0以外の項目）
                     const distColor = i === 0 ? "text-[#8e8e93]" : "text-[#0a84ff]";
                     const heightColor = i === 0 ? "text-[#8e8e93]" : "text-[#30d158]";
                     
@@ -434,7 +422,6 @@
                     tbody.appendChild(tr);
                 }
 
-                // 端材の行を最後に追加
                 const scrapW = newB - b;
                 const scrapL = newC - c;
                 
@@ -472,7 +459,6 @@
             ctx.scale(dpr, dpr);
             ctx.clearRect(0, 0, rect.width, rect.height);
             
-            // 数字を線の上に表示するため、上部のパディング(t)を増やす
             const padding = { l: 30, r: 30, t: 35, b: 35 };
             const drawW = rect.width - (padding.l + padding.r);
             const drawH = rect.height - (padding.t + padding.b);
@@ -483,7 +469,6 @@
             const tx = (x) => padding.l + x * scaleX;
             const ty = (y) => rect.height - padding.b - y * scaleY;
 
-            // 背景の横グリッド
             ctx.beginPath(); ctx.strokeStyle = '#222'; ctx.lineWidth = 1;
             for(let j=0; j<=maxHeight; j+=maxHeight/4) {
                 if(j === 0) continue;
@@ -491,64 +476,49 @@
             }
             ctx.stroke();
 
-            // 底辺 (W) - 入力欄の色: #0a84ff (青)
             ctx.beginPath(); ctx.strokeStyle = '#0a84ff'; ctx.lineWidth = 2;
             ctx.moveTo(tx(0), ty(0)); ctx.lineTo(tx(newB), ty(0)); ctx.stroke();
 
-            // ピッチの縦線 (Pitch) - 入力欄の色: #bf5af2 (紫)
             for (let i = 1; i < count; i++) {
                 const cx = i * interval;
                 const cy = a + ((newC - a) / newB) * cx;
                 ctx.beginPath();
                 ctx.strokeStyle = '#bf5af2';
                 ctx.lineWidth = 1;
-                ctx.globalAlpha = 0.5; // 少し薄めにする
+                ctx.globalAlpha = 0.5;
                 ctx.moveTo(tx(cx), ty(0)); ctx.lineTo(tx(cx), ty(cy)); ctx.stroke();
                 ctx.globalAlpha = 1.0;
             }
 
-            // 元のWの位置のL2 (点線) - 赤色に変更し、数字を下に配置
             if (origB > 0 && origB !== newB) {
                 ctx.setLineDash([4, 2]); ctx.strokeStyle = '#ff453a'; ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.moveTo(tx(origB), ty(0)); ctx.lineTo(tx(origB), ty(origC)); ctx.stroke();
                 ctx.setLineDash([]);
                 
-                // 元のL2の数値を縦線の下に表示 (サイズ11px)
                 ctx.font = "bold 11px sans-serif"; 
                 ctx.fillStyle = "#ff453a";
                 ctx.textAlign = "center";
                 ctx.fillText(Math.round(origC), tx(origB), ty(0) + 16);
             }
 
-            // 左端(L1) - 入力欄の色: #30d158 (緑)
             ctx.beginPath(); ctx.strokeStyle = '#30d158'; ctx.lineWidth = 2;
             ctx.moveTo(tx(0), ty(0)); ctx.lineTo(tx(0), ty(a)); ctx.stroke();
 
-            // 右端(新L2) - 入力欄の色: #30d158 (緑)
             ctx.beginPath(); ctx.strokeStyle = '#30d158'; ctx.lineWidth = 2;
             ctx.moveTo(tx(newB), ty(0)); ctx.lineTo(tx(newB), ty(newC)); ctx.stroke();
 
-            // 斜辺 (白で目立たせる)
             ctx.beginPath(); ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
             ctx.moveTo(tx(0), ty(a)); ctx.lineTo(tx(newB), ty(newC)); ctx.stroke();
             
-            // --- 数字の描画 ---
-            // フォントサイズを1ポイント大きく (元10px -> 11px)
             ctx.font = "bold 11px sans-serif"; 
-            
-            // 左端 L1 (縦線の上)
             ctx.fillStyle = "#30d158"; 
             ctx.textAlign = "center";
             ctx.fillText(Math.round(a), tx(0), ty(a) - 8);
-            
-            // 右端 延長L2 (縦線の上)
             ctx.fillText(Math.round(newC), tx(newB), ty(newC) - 8);
 
-            // W (底辺の下)
             ctx.fillStyle = "#0a84ff";
             ctx.fillText(`W: ${Math.round(origB)}`, tx(origB / 2), ty(0) + 16);
 
-            // 延長後のW (もし延長されていたら表示)
             if (origB !== newB && newB > 0) {
                 ctx.fillStyle = "#8e8e93";
                 ctx.font = "bold 10px sans-serif"; 
@@ -560,14 +530,20 @@
             localStorage.setItem('slope_calc_v_keypad', JSON.stringify(values));
         }
 
-        // ---------- ズーム機能 (新規追加) ----------
+        // ---------- ズーム・回転・ピンチ機能 ----------
+        let zoomState = { scale: 1, x: 0, y: 0, rotation: 0 };
+        let pinchState = { isDragging: false, startX: 0, startY: 0, initialDist: 0, initialScale: 1 };
+
         function openZoomModal() {
             const canvas = document.getElementById('slopeCanvas');
             if (!canvas || canvas.width === 0) return;
 
             const zoomImg = document.getElementById('zoomImg');
-            // Canvasの内容を画像データ(Base64)に変換してimgタグにセット
             zoomImg.src = canvas.toDataURL('image/png');
+            
+            // 状態を初期化
+            zoomState = { scale: 1, x: 0, y: 0, rotation: 0 };
+            updateZoomTransform();
 
             const modal = document.getElementById('zoomModal');
             modal.classList.remove('hidden');
@@ -576,21 +552,92 @@
         function closeZoomModal() {
             const modal = document.getElementById('zoomModal');
             modal.classList.add('hidden');
-            
-            // メモリ解放のために画像をクリア
             const zoomImg = document.getElementById('zoomImg');
             zoomImg.src = '';
         }
-        // ----------------------------------------
 
-        // スワイプジェスチャーの実装
+        function toggleZoomRotation() {
+            const zoomImg = document.getElementById('zoomImg');
+            zoomState.rotation = zoomState.rotation === 0 ? 90 : 0;
+            // 回転時にスケールと位置をリセットする
+            zoomState.scale = 1;
+            zoomState.x = 0;
+            zoomState.y = 0;
+            
+            // スムーズなアニメーションを追加
+            zoomImg.style.transition = 'transform 0.3s ease-in-out';
+            updateZoomTransform();
+            
+            // アニメーションが終わったらtransitionを外す（ピンチ時の遅延を防ぐため）
+            setTimeout(() => { zoomImg.style.transition = 'none'; }, 300);
+        }
+
+        function updateZoomTransform() {
+            const zoomImg = document.getElementById('zoomImg');
+            zoomImg.style.transform = `translate(${zoomState.x}px, ${zoomState.y}px) scale(${zoomState.scale}) rotate(${zoomState.rotation}deg)`;
+        }
+
+        // DOMContentLoaded後にズームエリアのタッチイベントを登録
+        window.addEventListener('DOMContentLoaded', () => {
+            const zoomArea = document.getElementById('zoomArea');
+            if (!zoomArea) return;
+
+            zoomArea.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    pinchState.isDragging = true;
+                    pinchState.startX = e.touches[0].clientX - zoomState.x;
+                    pinchState.startY = e.touches[0].clientY - zoomState.y;
+                } else if (e.touches.length === 2) {
+                    pinchState.isDragging = false;
+                    pinchState.initialDist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    pinchState.initialScale = zoomState.scale;
+                }
+            }, { passive: false });
+
+            zoomArea.addEventListener('touchmove', (e) => {
+                e.preventDefault(); // デフォルトのスクロール動作を防止
+                if (e.touches.length === 1 && pinchState.isDragging) {
+                    zoomState.x = e.touches[0].clientX - pinchState.startX;
+                    zoomState.y = e.touches[0].clientY - pinchState.startY;
+                    updateZoomTransform();
+                } else if (e.touches.length === 2) {
+                    const dist = Math.hypot(
+                        e.touches[0].clientX - e.touches[1].clientX,
+                        e.touches[0].clientY - e.touches[1].clientY
+                    );
+                    const scale = pinchState.initialScale * (dist / pinchState.initialDist);
+                    // 0.5倍から5倍の間に制限
+                    zoomState.scale = Math.max(0.5, Math.min(scale, 5));
+                    updateZoomTransform();
+                }
+            }, { passive: false });
+
+            zoomArea.addEventListener('touchend', (e) => {
+                if (e.touches.length < 2) {
+                    pinchState.initialDist = 0;
+                }
+                if (e.touches.length === 0) {
+                    pinchState.isDragging = false;
+                } else if (e.touches.length === 1) {
+                    // 指が1本離れたら再びドラッグ状態の準備
+                    pinchState.isDragging = true;
+                    pinchState.startX = e.touches[0].clientX - zoomState.x;
+                    pinchState.startY = e.touches[0].clientY - zoomState.y;
+                }
+            });
+        });
+
+        // スワイプジェスチャーの実装（タブ切り替え）
         function handleTouchStart(e) {
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
         }
 
         function handleTouchEnd(e) {
-            // モーダル表示中はスワイプによるタブ切り替えを無効化
+            // モーダルが開いている時はタブ切り替えを無効化
             if (!document.getElementById('zoomModal').classList.contains('hidden')) return;
 
             const touchEndX = e.changedTouches[0].clientX;
@@ -600,11 +647,8 @@
             const diffY = touchStartY - touchEndY;
 
             if (Math.abs(diffY) < 60 && Math.abs(diffX) > 80) {
-                if (diffX > 0) {
-                    switchTab('table');
-                } else {
-                    switchTab('calc');
-                }
+                if (diffX > 0) switchTab('table');
+                else switchTab('calc');
             }
         }
 
@@ -618,7 +662,6 @@
 
             window.addEventListener('touchstart', handleTouchStart, {passive: true});
             window.addEventListener('touchend', handleTouchEnd, {passive: true});
-            
             window.addEventListener('resize', calculate);
         };
     </script>
